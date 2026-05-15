@@ -407,6 +407,107 @@ main{padding:16px 18px;}
 .login-error{font-size:12px;color:#A32D2D;margin-top:8px;min-height:18px;}
 .login-spinner{font-size:12px;color:#6B6A65;margin-top:8px;min-height:18px;}
 
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  /* Header */
+  header{padding:8px 12px;gap:6px;}
+  .logo{font-size:13px;}
+  .hmid{flex:none;width:100%;order:3;}
+  .proj-sel{font-size:12px;max-width:100%;}
+  .hact{gap:4px;flex-wrap:wrap;}
+  .hact button{font-size:11px;padding:4px 8px;}
+  #sync-pill,#storage-pill{display:none;}
+
+  /* Tabs */
+  .tabs{padding:10px 10px 0;gap:2px;overflow-x:auto;flex-wrap:nowrap;}
+  .tab{font-size:11px;padding:6px 10px;white-space:nowrap;}
+
+  /* Main */
+  main{padding:10px;}
+
+  /* Metrics */
+  .metrics{grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+  .mc{padding:8px 10px;}
+  .mv{font-size:16px;}
+  .ml{font-size:9px;}
+  .ms{font-size:9px;}
+
+  /* Gantt — horizontal scroll, hide on very small */
+  #view-gantt .toolbar{gap:4px;}
+  #view-gantt .toolbar select{font-size:11px;padding:4px 6px;}
+  .sw{border-radius:8px;}
+  .gnc{width:140px;}
+  .gwc{width:22px;}
+  .gdc,.gac,.goc{display:none;}
+  .tn{font-size:10px;max-width:130px;}
+  .gph td,.gsh td{font-size:9px;}
+  .legend{gap:6px;}
+  .li{font-size:10px;}
+
+  /* List table */
+  .ltable-wrap{overflow-x:auto;}
+  .ltable{font-size:11px;}
+  .ltable thead th{font-size:10px;padding:6px 8px;}
+  .ltable td{padding:6px 8px;}
+  /* Hide less important columns on mobile */
+  .ltable th:nth-child(1),
+  .ltable td:nth-child(1),
+  .ltable th:nth-child(3),
+  .ltable td:nth-child(3){display:none;}
+
+  /* Week view */
+  .week-toolbar{gap:6px;}
+  .week-toolbar select,.week-toolbar input{font-size:11px;padding:4px 8px;}
+  .week-block-header{padding:8px 10px;}
+  .week-num{font-size:12px;}
+  .week-task-row{padding:6px 10px;flex-wrap:wrap;gap:4px;}
+  .week-module-tag{font-size:9px;min-width:100px;}
+  .week-task-name{font-size:11px;}
+  .week-edit-btn{opacity:1;}
+
+  /* Bottom bar */
+  .bb{gap:4px;}
+  .bb button{font-size:11px;padding:4px 8px;}
+
+  /* Modals */
+  .modal{padding:14px 16px;width:95%;}
+  .modal h3{font-size:13px;}
+
+  /* Login */
+  .login-box{width:90%;padding:24px 20px;}
+  .login-logo{font-size:18px;}
+}
+
+@media (max-width: 480px) {
+  /* Extra small phones */
+  .metrics{grid-template-columns:1fr 1fr;}
+  .mv{font-size:14px;}
+  .tabs{gap:1px;}
+  .tab{font-size:10px;padding:5px 8px;}
+  header{flex-wrap:wrap;}
+  .hmid{order:2;width:auto;flex:1;}
+
+  /* On very small screens, suggest week view */
+  #view-gantt::before{
+    content:'💡 En pantallas pequeñas la Vista por semana es más cómoda';
+    display:block;font-size:11px;color:var(--text3);
+    background:var(--blue-bg);border-radius:8px;
+    padding:8px 12px;margin-bottom:10px;
+  }
+
+  .week-task-row{gap:3px;}
+  .week-status{display:none;}
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  /* Tablet */
+  main{padding:14px;}
+  .gnc{width:180px;}
+  .tn{max-width:168px;}
+  .metrics{grid-template-columns:repeat(3,1fr);}
+  header{padding:10px 16px;}
+}
+
 @media print{
   @page{size:A3 landscape;margin:10mm 8mm;}
   body{background:#fff;}
