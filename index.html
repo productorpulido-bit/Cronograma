@@ -331,8 +331,9 @@ main{padding:16px 18px;}
 .date-config-bar input[type=date]:focus{border-color:var(--blue);}
 .date-config-bar input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--blue);}
 .date-config-sep{width:.5px;height:24px;background:var(--border2);}
-.date-result{font-size:11px;color:var(--text2);margin-left:auto;display:flex;gap:16px;flex-wrap:wrap;}
+.date-result{font-size:11px;color:var(--text2);margin-left:auto;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
 .date-result-item{display:flex;flex-direction:column;align-items:flex-end;}
+.date-result-sep{width:.5px;height:32px;background:var(--border2);}
 .date-result-label{font-size:10px;color:var(--text3);font-family:var(--mono);}
 .date-result-val{font-size:13px;font-weight:500;color:var(--text);}
 .week-date-tag{font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:8px;}
@@ -602,8 +603,7 @@ main{padding:16px 18px;}
         <input type="date" id="proj-start-date" onchange="saveDateConfig();renderAll();">
       </label>
       <div class="date-config-sep"></div>
-      <label><input type="checkbox" id="excl-weekends" checked onchange="saveDateConfig();renderAll();"> Excluir fines de semana</label>
-      <label><input type="checkbox" id="excl-holidays" checked onchange="saveDateConfig();renderAll();"> Excluir festivos (Colombia)</label>
+      <label><input type="checkbox" id="excl-holidays" checked onchange="saveDateConfig();renderAll();"> Excluir festivos Colombia</label>
       <div class="date-result" id="date-result"></div>
     </div>
     <div class="toolbar">
@@ -1199,8 +1199,8 @@ function render(){
     const cols=Math.min(2,TW-i);
     let spDateLabel='';
     if(startDate){
-      const r1=getWeekDateRange(i+1,startDate,exclW,exclH);
-      const r2=getWeekDateRange(Math.min(i+2,TW),startDate,exclW,exclH);
+      const r1=getWeekDateRange(i+1,startDate);
+      const r2=getWeekDateRange(Math.min(i+2,TW),startDate);
       if(r1&&r2) spDateLabel=`<div style="font-size:8px;font-weight:400;opacity:.85;margin-top:1px;letter-spacing:0;">${formatDateShort(r1.start)}–${formatDateShort(r2.end)}</div>`;
       else if(r1) spDateLabel=`<div style="font-size:8px;font-weight:400;opacity:.85;margin-top:1px;">${formatDateShort(r1.start)}–${formatDateShort(r1.end)}</div>`;
     }
@@ -1214,7 +1214,7 @@ function render(){
   for(let i=0;i<TW;i++){
     let tooltip='';
     if(startDate){
-      const range=getWeekDateRange(i+1,startDate,exclW,exclH);
+      const range=getWeekDateRange(i+1,startDate);
       if(range) tooltip=`title="${formatDate(range.start)} – ${formatDate(range.end)}"`;
     }
     weekHtml+=`<th class="gwc wk-header" ${tooltip} style="cursor:default;">S${i+1}</th>`;
@@ -1529,8 +1529,15 @@ async function exportXLSX(){
     ws1.getRow(1).height=28;
     ws1.mergeCells(1,1,1,4+TW2);
     const t1=ws1.getCell(1,1);
-    t1.value='Cronograma '+pn;
-    t1.font={name:'Calibri',bold:true,size:14,color:{argb:'FFFFFFFF'}};
+    const{startDate:xlsd,exclH:xleh}=getDateConfig();
+    const xlMaxW=tasks.filter(t=>!t.milestone).length?Math.max(...tasks.filter(t=>!t.milestone).map(t=>t.start+t.dur-1)):1;
+    let xlTitleStr='Cronograma '+pn;
+    if(xlsd){
+      const{base:xlb,holidays:xlh,real:xlr}=calcEndDateReal(xlsd,xlMaxW,xleh);
+      xlTitleStr+=`  |  Inicio: ${formatDate(xlsd)}  ·  Fin base: ${formatDate(xlb)}${xlh>0?'  ·  +'+xlh+' festivos  →  Fin real: '+formatDate(xlr):''}`;
+    }
+    t1.value=xlTitleStr;
+    t1.font={name:'Calibri',bold:true,size:12,color:{argb:'FFFFFFFF'}};
     t1.fill=bgFill(HDR);t1.alignment=cAlign('left');
 
     // Row 2: sprint headers (every 2 weeks)
@@ -1613,7 +1620,7 @@ async function exportXLSX(){
     // ── SHEET 2: TABLA DETALLE ──────────────────────
     const ws2=wb.addWorksheet('Tabla Detalle',{views:[{state:'frozen',ySplit:2}]});
     ws2.properties.showGridLines=false;
-    [18,9,24,46,13,13,11].forEach((w,i)=>ws2.getColumn(i+1).width=w);
+    [18,9,24,46,13,13,11,18,18].forEach((w,i)=>ws2.getColumn(i+1).width=w);
 
     ws2.getRow(1).height=28;
     ws2.mergeCells(1,1,1,7);
@@ -1622,7 +1629,7 @@ async function exportXLSX(){
     t2.fill=bgFill(HDR);t2.alignment=cAlign('left');
 
     ws2.getRow(2).height=18;
-    ['Fase','Tipo','Módulo','Tarea','Sem. Inicio','Sem. Fin','Duración'].forEach((v,i)=>{
+    ['Fase','Tipo','Módulo','Tarea','Sem. Inicio','Sem. Fin','Duración','Fecha Inicio Sem','Fecha Fin Sem'].forEach((v,i)=>{
       const c=ws2.getCell(2,i+1);c.value=v;c.font=hdrFont(9);c.fill=bgFill(HDR2);
       c.alignment=cAlign(i===3?'left':'center');c.border=allB;
     });
@@ -1666,7 +1673,7 @@ async function exportXLSX(){
         [[PHL[task.phase],1,'center'],[task.type==='mobile'?'Móvil':'Web',2,'center'],[task.section||'',3,'left'],[task.name,4,'left']].forEach(([v,col,align])=>{
           const c=ws2.getCell(row2,col);c.value=v;c.font=bodyFont();c.fill=bgFill(rowBg);c.alignment=cAlign(align);c.border=allB;
         });
-        [[task.start,5],[task.start+task.dur-1,6],[task.dur+'s',7]].forEach(([v,col])=>{
+        [[task.start,5],[task.start+task.dur-1,6],[task.dur+'s',7],[taskStartDateStr,8],[taskEndDateStr,9]].forEach(([v,col])=>{
           const c=ws2.getCell(row2,col);c.value=v;
           c.font={name:'Calibri',bold:true,size:9,color:{argb:'FFFFFFFF'}};
           c.fill=bgFill(barColor);c.alignment=cAlign();c.border=allB;
@@ -1713,7 +1720,7 @@ async function exportXLSX(){
         const sc=ws3.getCell(rw3,1);
         let spDateStr2=spLabel+' — Semanas '+(spNum*2-1)+' y '+spNum*2;
         const{startDate:xsd,exclW:xew,exclH:xeh}=getDateConfig();
-        if(xsd){const xr1=getWeekDateRange(spNum*2-1,xsd,xew,xeh);const xr2=getWeekDateRange(spNum*2,xsd,xew,xeh);if(xr1&&xr2) spDateStr2+=` (${formatDate(xr1.start)} – ${formatDate(xr2.end)})`;}
+        if(xsd){const xr1=getWeekDateRange(spNum*2-1,xsd);const xr2=getWeekDateRange(spNum*2,xsd);if(xr1&&xr2) spDateStr2+=` (${formatDate(xr1.start)} – ${formatDate(xr2.end)})`;}
         sc.value=spDateStr2;
         sc.font={name:'Calibri',bold:true,size:9,color:{argb:'FF185FA5'}};
         sc.fill=bgFill('E6F1FB');sc.alignment=cAlign('left');
@@ -1727,7 +1734,7 @@ async function exportXLSX(){
       let wkLabel='  Semana '+w+' — '+wt.length+' tarea'+(wt.length!==1?'s':'');
       const{startDate:sd2,exclW:ew2,exclH:eh2}=getDateConfig();
       if(sd2){
-        const wr=getWeekDateRange(w,sd2,ew2,eh2);
+        const wr=getWeekDateRange(w,sd2);
         if(wr) wkLabel+=` · ${formatDate(wr.start)} – ${formatDate(wr.end)}`;
       }
       wc.value=wkLabel;
@@ -1797,8 +1804,8 @@ async function exportPPTX(){
     let fechaInicioStr='—',fechaFinStr='—';
     if(ppsd){
       fechaInicioStr=formatDate(ppsd);
-      const ppEnd=addWorkdays(ppsd,maxW,ppew,ppeh);
-      fechaFinStr=formatDate(ppEnd);
+      const{real:ppEnd,base:ppBase,holidays:ppHol}=calcEndDateReal(ppsd,maxW,ppeh);
+      fechaFinStr=`${formatDate(ppBase)}${ppHol>0?" (+"+ppHol+" festivos) → "+formatDate(ppEnd):""}`;
     }
     const stats=[[''+new Set(tasks.filter(t=>!t.milestone).map(t=>t.phase)).size,'Fases'],['2','Apps (Móvil+Web)'],[''+modCount,'Módulos'],[''+real.length,'Tareas'],[''+sprintCount,'Sprints'],[''+maxW,'Semanas']];
     stats.forEach(([n,l],i)=>{
@@ -1809,7 +1816,9 @@ async function exportPPTX(){
       s1.addText(l,{x,y:4.62,w:colW-0.1,h:0.4,fontSize:10,color:'8BB8E8',fontFace:'Calibri',align:'left'});
     });
     if(ppsd){
-      s1.addText(`Inicio: ${fechaInicioStr}  ·  Fin estimado: ${fechaFinStr}`,{x:0.4,y:6.5,w:10,h:0.3,fontSize:10,color:'8BB8E8',fontFace:'Calibri',italic:true});
+      const{base:ppb,holidays:pph,real:ppr}=calcEndDateReal(ppsd,maxW,ppeh);
+      const finLabel=pph>0?`Fin base: ${formatDate(ppb)}  ·  +${pph} festivo${pph!==1?'s':''}  →  Fin real: ${formatDate(ppr)}`:`Fin: ${formatDate(ppb)}`;
+      s1.addText(`Inicio: ${fechaInicioStr}  ·  ${finLabel}`,{x:0.4,y:6.45,w:12.5,h:0.35,fontSize:9.5,color:'8BB8E8',fontFace:'Calibri',italic:true});
     }
     s1.addText('TAT — Trade Account Tool',{x:0.4,y:6.85,w:6,h:0.35,fontSize:9,color:gray,fontFace:'Calibri',italic:true});
 
@@ -1974,8 +1983,8 @@ async function exportPPTX(){
       let pptxSpLabel=`SP${sp} — Semanas ${w1} y ${w2}`;
       const{startDate:psd,exclW:pew,exclH:peh}=getDateConfig();
       if(psd){
-        const pr1=getWeekDateRange(w1,psd,pew,peh);
-        const pr2=getWeekDateRange(w2,psd,pew,peh);
+        const pr1=getWeekDateRange(w1,psd);
+        const pr2=getWeekDateRange(w2,psd);
         if(pr1&&pr2) pptxSpLabel+=` · ${formatDate(pr1.start)} – ${formatDate(pr2.end)}`;
       }
       sw.addText(pptxSpLabel,{x:0.3,y:0,w:10,h:0.75,fontSize:16,bold:true,color:'185FA5',fontFace:'Calibri',valign:'middle'});
@@ -2130,7 +2139,7 @@ function renderWeek(){
     const{startDate,exclW,exclH}=getDateConfig();
     let weekDateLabel='';
     if(startDate){
-      const range=getWeekDateRange(w,startDate,exclW,exclH);
+      const range=getWeekDateRange(w,startDate);
       if(range) weekDateLabel=` · ${formatDateShort(range.start)} – ${formatDateShort(range.end)}`;
     }
     const block=document.createElement('div');
@@ -2527,46 +2536,10 @@ function checkSession(){
 }
 
 /* ── DATE CALCULATION ── */
-// Colombian public holidays (fixed + movable) — updated to 2024-2026
-const CO_HOLIDAYS = [
-  // Fixed holidays
-  '01-01','05-01','07-20','08-07','12-08','12-25',
-  // Emiliani law (moved to Monday)
-  // We calculate these dynamically
-];
-
-function getColombiaHolidays(year){
-  const fixed=[
-    `${year}-01-01`,`${year}-05-01`,`${year}-07-20`,
-    `${year}-08-07`,`${year}-12-08`,`${year}-12-25`
-  ];
-  // Emiliani (moved to next Monday if not already Monday)
-  const emiliani=[
-    [1,6],[3,19],[6,29],[8,15],[10,12],[11,1],[11,11]
-  ];
-  emiliani.forEach(([m,d])=>{
-    const date=new Date(year,m-1,d);
-    const day=date.getDay();
-    if(day!==1) date.setDate(date.getDate()+(day===0?1:8-day));
-    fixed.push(date.toISOString().split('T')[0]);
-  });
-  // Easter-based holidays
-  const easter=getEaster(year);
-  const holyThursday=new Date(easter);holyThursday.setDate(easter.getDate()-3);
-  const holyFriday=new Date(easter);holyFriday.setDate(easter.getDate()-2);
-  const ascension=new Date(easter);ascension.setDate(easter.getDate()+39);
-  const corpusChristi=new Date(easter);corpusChristi.setDate(easter.getDate()+60);
-  const sacredHeart=new Date(easter);sacredHeart.setDate(easter.getDate()+68);
-  // Move Emiliani easter-based
-  [ascension,corpusChristi,sacredHeart].forEach(d=>{
-    const day=d.getDay();
-    if(day!==1) d.setDate(d.getDate()+(day===0?1:8-day));
-    fixed.push(d.toISOString().split('T')[0]);
-  });
-  fixed.push(holyThursday.toISOString().split('T')[0]);
-  fixed.push(holyFriday.toISOString().split('T')[0]);
-  return new Set(fixed);
-}
+// Sprints = 2 calendar weeks (14 days)
+// Fecha fin base = inicio + semanas*7 días calendario
+// Festivos = días festivos que caen en días hábiles (lun-vie) en el rango
+// Fecha fin real = fecha fin base + cantidad de festivos
 
 function getEaster(year){
   const a=year%19,b=Math.floor(year/100),c=year%100;
@@ -2580,76 +2553,76 @@ function getEaster(year){
 }
 
 let _holidayCache={};
+function getColombiaHolidays(year){
+  const fixed=[
+    `${year}-01-01`,`${year}-05-01`,`${year}-07-20`,
+    `${year}-08-07`,`${year}-12-08`,`${year}-12-25`
+  ];
+  const emiliani=[[1,6],[3,19],[6,29],[8,15],[10,12],[11,1],[11,11]];
+  emiliani.forEach(([m,d])=>{
+    const date=new Date(year,m-1,d);
+    const day=date.getDay();
+    if(day!==1) date.setDate(date.getDate()+(day===0?1:8-day));
+    fixed.push(date.toISOString().split('T')[0]);
+  });
+  const easter=getEaster(year);
+  const holyThu=new Date(easter);holyThu.setDate(easter.getDate()-3);
+  const holyFri=new Date(easter);holyFri.setDate(easter.getDate()-2);
+  const asc=new Date(easter);asc.setDate(easter.getDate()+39);
+  const corp=new Date(easter);corp.setDate(easter.getDate()+60);
+  const sac=new Date(easter);sac.setDate(easter.getDate()+68);
+  [asc,corp,sac].forEach(d=>{const day=d.getDay();if(day!==1)d.setDate(d.getDate()+(day===0?1:8-day));fixed.push(d.toISOString().split('T')[0]);});
+  fixed.push(holyThu.toISOString().split('T')[0]);
+  fixed.push(holyFri.toISOString().split('T')[0]);
+  return new Set(fixed);
+}
+
 function isHoliday(date){
   const year=date.getFullYear();
   if(!_holidayCache[year]) _holidayCache[year]=getColombiaHolidays(year);
   return _holidayCache[year].has(date.toISOString().split('T')[0]);
 }
 
-function isWorkday(date, exclWeekends, exclHolidays){
-  const day=date.getDay();
-  if(exclWeekends&&(day===0||day===6)) return false;
-  if(exclHolidays&&isHoliday(date)) return false;
-  return true;
+function isWeekday(date){
+  const d=date.getDay();return d!==0&&d!==6;
 }
 
-function addWorkdays(startDate, weeks, exclWeekends, exclHolidays){
-  if(!exclWeekends&&!exclHolidays){
-    // Simple: just add calendar days
-    const d=new Date(startDate);
-    d.setDate(d.getDate()+weeks*7-1);
-    return d;
-  }
-  // Count workdays
-  const totalDays=weeks*5; // 5 workdays per week
+// Count holidays that fall on weekdays between two dates (inclusive)
+function countHolidaysInRange(start,end){
   let count=0;
-  const d=new Date(startDate);
-  while(count<totalDays){
-    if(isWorkday(d,exclWeekends,exclHolidays)) count++;
-    if(count<totalDays) d.setDate(d.getDate()+1);
+  const d=new Date(start);
+  while(d<=end){
+    if(isWeekday(d)&&isHoliday(d)) count++;
+    d.setDate(d.getDate()+1);
   }
+  return count;
+}
+
+// Fecha fin base = inicio + (weeks*7 - 1) días calendario
+function calcEndDateBase(startDate, weeks){
+  const d=new Date(startDate);
+  d.setDate(d.getDate()+weeks*7-1);
   return d;
 }
 
-function getWeekDateRange(weekNum, startDate, exclWeekends, exclHolidays){
+// Fecha fin real = fin base + festivos en el rango (solo si excl_festivos activo)
+function calcEndDateReal(startDate, weeks, exclHolidays){
+  const base=calcEndDateBase(startDate,weeks);
+  if(!exclHolidays) return{base,holidays:0,real:base};
+  const holidays=countHolidaysInRange(startDate,base);
+  const real=new Date(base);
+  real.setDate(real.getDate()+holidays);
+  return{base,holidays,real};
+}
+
+// Week date range — pure calendar (2 calendar weeks per sprint)
+function getWeekDateRange(weekNum, startDate){
   if(!startDate) return null;
-  // Find the start date of this week
-  let workdayCount=0;
-  const d=new Date(startDate);
-  const weekStart=(weekNum-1)*5; // 5 workdays per week
-  
-  if(!exclWeekends&&!exclHolidays){
-    const ws=new Date(startDate);
-    ws.setDate(ws.getDate()+(weekNum-1)*7);
-    const we=new Date(ws);
-    we.setDate(we.getDate()+6);
-    return{start:ws,end:we};
-  }
-
-  // Find first workday of this week
-  let wd=new Date(startDate);
-  let wCount=0;
-  let weekStart2=null;
-  while(true){
-    if(isWorkday(wd,exclWeekends,exclHolidays)){
-      if(wCount===weekStart){weekStart2=new Date(wd);break;}
-      wCount++;
-    }
-    wd.setDate(wd.getDate()+1);
-    if(wCount>weekStart) break;
-  }
-  if(!weekStart2) return null;
-
-  // Find last workday of this week (4 more workdays)
-  let weekEnd=new Date(weekStart2);
-  let dayCount=0;
-  let cur=new Date(weekStart2);
-  cur.setDate(cur.getDate()+1);
-  while(dayCount<4){
-    if(isWorkday(cur,exclWeekends,exclHolidays)){dayCount++;if(dayCount===4) weekEnd=new Date(cur);}
-    cur.setDate(cur.getDate()+1);
-  }
-  return{start:weekStart2,end:weekEnd};
+  const ws=new Date(startDate);
+  ws.setDate(ws.getDate()+(weekNum-1)*7);
+  const we=new Date(ws);
+  we.setDate(we.getDate()+6);
+  return{start:ws,end:we};
 }
 
 function formatDate(d){
@@ -2663,19 +2636,17 @@ function formatDateShort(d){
 
 function getDateConfig(){
   const dateInput=document.getElementById('proj-start-date');
-  const exclW=document.getElementById('excl-weekends')?.checked??true;
   const exclH=document.getElementById('excl-holidays')?.checked??true;
   const startStr=dateInput?.value;
   const startDate=startStr?new Date(startStr+'T00:00:00'):null;
-  return{startDate,exclW,exclH};
+  return{startDate,exclW:false,exclH};
 }
 
 function saveDateConfig(){
-  const{startDate,exclW,exclH}=getDateConfig();
+  const{startDate,exclH}=getDateConfig();
   const proj=state.projects[state.currentProject];
   if(proj){
     proj.startDate=startDate?startDate.toISOString().split('T')[0]:'';
-    proj.exclWeekends=exclW;
     proj.exclHolidays=exclH;
     markDirty();
     // Save to Supabase immediately
@@ -2690,8 +2661,6 @@ function loadDateConfig(){
   if(!proj) return;
   const di=document.getElementById('proj-start-date');
   if(di&&proj.startDate) di.value=proj.startDate;
-  const ew=document.getElementById('excl-weekends');
-  if(ew) ew.checked=proj.exclWeekends!==undefined?proj.exclWeekends:true;
   const eh=document.getElementById('excl-holidays');
   if(eh) eh.checked=proj.exclHolidays!==undefined?proj.exclHolidays:true;
 }
@@ -2700,15 +2669,26 @@ function updateDateResult(){
   const{startDate,exclW,exclH}=getDateConfig();
   const result=document.getElementById('date-result');
   if(!result) return;
-  if(!startDate){result.innerHTML='<span style="font-size:11px;color:var(--text3);">Configura una fecha de inicio para ver fechas</span>';return;}
+  if(!startDate){
+    result.innerHTML='<span style="font-size:11px;color:var(--text3);">Configura una fecha de inicio para ver fechas</span>';
+    return;
+  }
   const tasks=cp().filter(t=>!t.milestone);
   const maxW=tasks.length?Math.max(...tasks.map(t=>t.start+t.dur-1)):1;
-  const endDate=addWorkdays(startDate,maxW,exclW,exclH);
   const totalSprints=Math.ceil(maxW/2);
+  const{base,holidays,real}=calcEndDateReal(startDate,maxW,exclH);
   result.innerHTML=`
     <div class="date-result-item"><span class="date-result-label">INICIO</span><span class="date-result-val">${formatDate(startDate)}</span></div>
-    <div class="date-result-item"><span class="date-result-label">FIN ESTIMADO</span><span class="date-result-val">${formatDate(endDate)}</span></div>
-    <div class="date-result-item"><span class="date-result-label">SPRINTS</span><span class="date-result-val">${totalSprints} × 2 sem</span></div>`;
+    <div class="date-result-item"><span class="date-result-label">FIN BASE</span><span class="date-result-val">${formatDate(base)}</span></div>
+    <div class="date-result-item">
+      <span class="date-result-label">FESTIVOS EN RANGO</span>
+      <span class="date-result-val" style="color:${holidays>0?'var(--pink)':'var(--green)'}">
+        ${holidays>0?'+'+holidays+' día'+(holidays!==1?'s':''):'Sin festivos'}
+      </span>
+    </div>
+    <div class="date-result-sep"></div>
+    <div class="date-result-item"><span class="date-result-label">FIN REAL</span><span class="date-result-val" style="color:var(--blue);font-weight:600;">${formatDate(real)}</span></div>
+    <div class="date-result-item"><span class="date-result-label">SPRINTS</span><span class="date-result-val">${totalSprints}</span></div>`;
 }
 
 function renderAll(){
