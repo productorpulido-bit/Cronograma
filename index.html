@@ -322,6 +322,19 @@ main{padding:16px 18px;}
 .week-type-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-left:10px;}
 .week-status{font-size:10px;color:var(--text3);margin-left:8px;font-family:var(--mono);}
 .week-empty{padding:20px 14px;font-size:12px;color:var(--text3);text-align:center;}
+
+/* ── DATE CONFIG ── */
+.date-config-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--surface);border:.5px solid var(--border2);border-radius:var(--rl);padding:12px 16px;margin-bottom:14px;}
+.date-config-bar label{font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;}
+.date-config-bar input[type=date]{font-family:var(--font);font-size:12px;padding:5px 9px;border:.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);cursor:pointer;outline:none;}
+.date-config-bar input[type=date]:focus{border-color:var(--blue);}
+.date-config-bar input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--blue);}
+.date-config-sep{width:.5px;height:24px;background:var(--border2);}
+.date-result{font-size:11px;color:var(--text2);margin-left:auto;display:flex;gap:16px;flex-wrap:wrap;}
+.date-result-item{display:flex;flex-direction:column;align-items:flex-end;}
+.date-result-label{font-size:10px;color:var(--text3);font-family:var(--mono);}
+.date-result-val{font-size:13px;font-weight:500;color:var(--text);}
+.week-date-tag{font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:8px;}
 .week-edit-btn{background:none;border:none;cursor:pointer;padding:2px 5px;font-size:12px;opacity:0;transition:opacity .15s;margin-left:6px;border-radius:4px;}
 .week-task-row:hover .week-edit-btn{opacity:1;}
 .week-edit-btn:hover{background:var(--surface2);}
@@ -583,6 +596,15 @@ main{padding:16px 18px;}
 
   <!-- GANTT VIEW -->
   <div class="view active" id="view-gantt">
+    <div class="date-config-bar" id="date-config-bar">
+      <label>📅 Fecha inicio
+        <input type="date" id="proj-start-date" onchange="saveDateConfig();renderAll();">
+      </label>
+      <div class="date-config-sep"></div>
+      <label><input type="checkbox" id="excl-weekends" checked onchange="saveDateConfig();renderAll();"> Excluir fines de semana</label>
+      <label><input type="checkbox" id="excl-holidays" checked onchange="saveDateConfig();renderAll();"> Excluir festivos (Colombia)</label>
+      <div class="date-result" id="date-result"></div>
+    </div>
     <div class="toolbar">
       <select id="fp" onchange="render()">
         <option value="all">Todas las fases</option>
@@ -1042,7 +1064,7 @@ function buildSel(){
 function switchProject(id){
   if(!state.projects[id])return;
   state.currentProject=id;TW=state.projects[id].weeks||24;
-  document.getElementById('tw').value=String(TW);markDirty();render();if(currentTab==='list')renderList();
+  document.getElementById('tw').value=String(TW);markDirty();loadDateConfig();renderAll();if(currentTab==='list')renderList();
 }
 function openProjModal(){renderPList();document.getElementById('pov').classList.add('open');}
 function renderPList(){
@@ -1149,20 +1171,36 @@ function render(){
   });
   const gh=document.getElementById('gh');gh.innerHTML='';
   const tr=document.createElement('tr');
+  const{startDate,exclW,exclH}=getDateConfig();
   // Sprint row (every 2 weeks = 1 sprint)
   const trSp=document.createElement('tr');
-  let spHtml=`<th class="goc" rowspan="2" style="vertical-align:middle;"></th><th class="gnc nth" rowspan="2" style="vertical-align:middle;">Módulo</th>`;
+  let spHtml=`<th class="goc" rowspan="3" style="vertical-align:middle;"></th><th class="gnc nth" rowspan="3" style="vertical-align:middle;">Módulo</th>`;
   for(let i=0;i<TW;i+=2){
     const spNum=Math.floor(i/2)+1;
     const cols=Math.min(2,TW-i);
     spHtml+=`<th class="gwc sp-header" colspan="${cols}">SP${spNum}</th>`;
   }
-  spHtml+=`<th class="gdc" rowspan="2" style="vertical-align:middle;">Dur</th><th class="gac" rowspan="2"></th>`;
+  spHtml+=`<th class="gdc" rowspan="3" style="vertical-align:middle;">Dur</th><th class="gac" rowspan="3"></th>`;
   trSp.innerHTML=spHtml;
   gh.appendChild(trSp);
   // Week row
   tr.innerHTML=Array.from({length:TW},(_,i)=>`<th class="gwc wk-header">S${i+1}</th>`).join('');
   gh.appendChild(tr);
+  // Date row
+  const trDate=document.createElement('tr');
+  let dateHtml='';
+  for(let i=0;i<TW;i++){
+    if(startDate){
+      const range=getWeekDateRange(i+1,startDate,exclW,exclH);
+      const label=range?formatDateShort(range.start):'';
+      dateHtml+=`<th class="gwc" style="font-size:8px;color:var(--text3);font-family:var(--mono);padding:2px 1px;background:var(--surface);">${label}</th>`;
+    } else {
+      dateHtml+=`<th class="gwc" style="background:var(--surface);"></th>`;
+    }
+  }
+  trDate.innerHTML=dateHtml;
+  gh.appendChild(trDate);
+  updateDateResult();
   // Set CSS var for sticky offset after render
   requestAnimationFrame(()=>{
     const firstRow=document.querySelector('.gtable thead tr:first-child');
@@ -2038,7 +2076,13 @@ function renderWeek(){
 
     const spNum=Math.ceil(w/2);
     const isOdd=w%2===1;
-    const spLabel='SP'+spNum+(isOdd?' — 1ª mitad':' — 2ª mitad');
+    let spLabel='SP'+spNum+(isOdd?' — 1ª mitad':' — 2ª mitad');
+    const{startDate,exclW,exclH}=getDateConfig();
+    let weekDateLabel='';
+    if(startDate){
+      const range=getWeekDateRange(w,startDate,exclW,exclH);
+      if(range) weekDateLabel=` · ${formatDateShort(range.start)} – ${formatDateShort(range.end)}`;
+    }
     const block=document.createElement('div');
     block.className='week-block';
 
@@ -2055,6 +2099,7 @@ function renderWeek(){
     hdr.innerHTML=`
       <span class="week-num">Semana ${w}</span>
       <span class="week-sp">SP${spNum}</span>
+      ${weekDateLabel?`<span class="week-date-tag">${weekDateLabel}</span>`:''}
       <span class="week-count">${weekTasks.length} tarea${weekTasks.length!==1?'s':''}</span>
       <span class="week-chevron open">▶</span>`;
     hdr.onclick=()=>{
@@ -2424,6 +2469,194 @@ function checkSession(){
   return false;
 }
 
+/* ── DATE CALCULATION ── */
+// Colombian public holidays (fixed + movable) — updated to 2024-2026
+const CO_HOLIDAYS = [
+  // Fixed holidays
+  '01-01','05-01','07-20','08-07','12-08','12-25',
+  // Emiliani law (moved to Monday)
+  // We calculate these dynamically
+];
+
+function getColombiaHolidays(year){
+  const fixed=[
+    `${year}-01-01`,`${year}-05-01`,`${year}-07-20`,
+    `${year}-08-07`,`${year}-12-08`,`${year}-12-25`
+  ];
+  // Emiliani (moved to next Monday if not already Monday)
+  const emiliani=[
+    [1,6],[3,19],[6,29],[8,15],[10,12],[11,1],[11,11]
+  ];
+  emiliani.forEach(([m,d])=>{
+    const date=new Date(year,m-1,d);
+    const day=date.getDay();
+    if(day!==1) date.setDate(date.getDate()+(day===0?1:8-day));
+    fixed.push(date.toISOString().split('T')[0]);
+  });
+  // Easter-based holidays
+  const easter=getEaster(year);
+  const holyThursday=new Date(easter);holyThursday.setDate(easter.getDate()-3);
+  const holyFriday=new Date(easter);holyFriday.setDate(easter.getDate()-2);
+  const ascension=new Date(easter);ascension.setDate(easter.getDate()+39);
+  const corpusChristi=new Date(easter);corpusChristi.setDate(easter.getDate()+60);
+  const sacredHeart=new Date(easter);sacredHeart.setDate(easter.getDate()+68);
+  // Move Emiliani easter-based
+  [ascension,corpusChristi,sacredHeart].forEach(d=>{
+    const day=d.getDay();
+    if(day!==1) d.setDate(d.getDate()+(day===0?1:8-day));
+    fixed.push(d.toISOString().split('T')[0]);
+  });
+  fixed.push(holyThursday.toISOString().split('T')[0]);
+  fixed.push(holyFriday.toISOString().split('T')[0]);
+  return new Set(fixed);
+}
+
+function getEaster(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100;
+  const d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25);
+  const g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30;
+  const i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7;
+  const m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31);
+  const day=((h+l-7*m+114)%31)+1;
+  return new Date(year,month-1,day);
+}
+
+let _holidayCache={};
+function isHoliday(date){
+  const year=date.getFullYear();
+  if(!_holidayCache[year]) _holidayCache[year]=getColombiaHolidays(year);
+  return _holidayCache[year].has(date.toISOString().split('T')[0]);
+}
+
+function isWorkday(date, exclWeekends, exclHolidays){
+  const day=date.getDay();
+  if(exclWeekends&&(day===0||day===6)) return false;
+  if(exclHolidays&&isHoliday(date)) return false;
+  return true;
+}
+
+function addWorkdays(startDate, weeks, exclWeekends, exclHolidays){
+  if(!exclWeekends&&!exclHolidays){
+    // Simple: just add calendar days
+    const d=new Date(startDate);
+    d.setDate(d.getDate()+weeks*7-1);
+    return d;
+  }
+  // Count workdays
+  const totalDays=weeks*5; // 5 workdays per week
+  let count=0;
+  const d=new Date(startDate);
+  while(count<totalDays){
+    if(isWorkday(d,exclWeekends,exclHolidays)) count++;
+    if(count<totalDays) d.setDate(d.getDate()+1);
+  }
+  return d;
+}
+
+function getWeekDateRange(weekNum, startDate, exclWeekends, exclHolidays){
+  if(!startDate) return null;
+  // Find the start date of this week
+  let workdayCount=0;
+  const d=new Date(startDate);
+  const weekStart=(weekNum-1)*5; // 5 workdays per week
+  
+  if(!exclWeekends&&!exclHolidays){
+    const ws=new Date(startDate);
+    ws.setDate(ws.getDate()+(weekNum-1)*7);
+    const we=new Date(ws);
+    we.setDate(we.getDate()+6);
+    return{start:ws,end:we};
+  }
+
+  // Find first workday of this week
+  let wd=new Date(startDate);
+  let wCount=0;
+  let weekStart2=null;
+  while(true){
+    if(isWorkday(wd,exclWeekends,exclHolidays)){
+      if(wCount===weekStart){weekStart2=new Date(wd);break;}
+      wCount++;
+    }
+    wd.setDate(wd.getDate()+1);
+    if(wCount>weekStart) break;
+  }
+  if(!weekStart2) return null;
+
+  // Find last workday of this week (4 more workdays)
+  let weekEnd=new Date(weekStart2);
+  let dayCount=0;
+  let cur=new Date(weekStart2);
+  cur.setDate(cur.getDate()+1);
+  while(dayCount<4){
+    if(isWorkday(cur,exclWeekends,exclHolidays)){dayCount++;if(dayCount===4) weekEnd=new Date(cur);}
+    cur.setDate(cur.getDate()+1);
+  }
+  return{start:weekStart2,end:weekEnd};
+}
+
+function formatDate(d){
+  if(!d) return '';
+  return d.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});
+}
+function formatDateShort(d){
+  if(!d) return '';
+  return d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'});
+}
+
+function getDateConfig(){
+  const dateInput=document.getElementById('proj-start-date');
+  const exclW=document.getElementById('excl-weekends')?.checked??true;
+  const exclH=document.getElementById('excl-holidays')?.checked??true;
+  const startStr=dateInput?.value;
+  const startDate=startStr?new Date(startStr+'T00:00:00'):null;
+  return{startDate,exclW,exclH};
+}
+
+function saveDateConfig(){
+  const{startDate,exclW,exclH}=getDateConfig();
+  const proj=state.projects[state.currentProject];
+  if(proj){
+    proj.startDate=startDate?startDate.toISOString().split('T')[0]:'';
+    proj.exclWeekends=exclW;
+    proj.exclHolidays=exclH;
+    markDirty();
+  }
+}
+
+function loadDateConfig(){
+  const proj=state.projects[state.currentProject];
+  if(!proj) return;
+  const di=document.getElementById('proj-start-date');
+  if(di&&proj.startDate) di.value=proj.startDate;
+  const ew=document.getElementById('excl-weekends');
+  if(ew) ew.checked=proj.exclWeekends!==undefined?proj.exclWeekends:true;
+  const eh=document.getElementById('excl-holidays');
+  if(eh) eh.checked=proj.exclHolidays!==undefined?proj.exclHolidays:true;
+}
+
+function updateDateResult(){
+  const{startDate,exclW,exclH}=getDateConfig();
+  const result=document.getElementById('date-result');
+  if(!result) return;
+  if(!startDate){result.innerHTML='<span style="font-size:11px;color:var(--text3);">Configura una fecha de inicio para ver fechas</span>';return;}
+  const tasks=cp().filter(t=>!t.milestone);
+  const maxW=tasks.length?Math.max(...tasks.map(t=>t.start+t.dur-1)):1;
+  const endDate=addWorkdays(startDate,maxW,exclW,exclH);
+  const totalSprints=Math.ceil(maxW/2);
+  result.innerHTML=`
+    <div class="date-result-item"><span class="date-result-label">INICIO</span><span class="date-result-val">${formatDate(startDate)}</span></div>
+    <div class="date-result-item"><span class="date-result-label">FIN ESTIMADO</span><span class="date-result-val">${formatDate(endDate)}</span></div>
+    <div class="date-result-item"><span class="date-result-label">SPRINTS</span><span class="date-result-val">${totalSprints} × 2 sem</span></div>`;
+}
+
+function renderAll(){
+  updateDateResult();
+  render();
+  if(currentTab==='list') renderList();
+  if(currentTab==='week') renderWeek();
+}
+
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
 
 document.addEventListener('keydown',e=>{
@@ -2438,7 +2671,9 @@ window.addEventListener('beforeunload',e=>{if(dirty)e.returnValue='Cambios sin g
 
 loadAll();buildSel();
 document.getElementById('tw').value=String(TW);
+loadDateConfig();
 render();
+updateDateResult();
 updateStoragePill();
 // Check session first — if authenticated, skip login and load from Supabase
 if(checkSession()){
