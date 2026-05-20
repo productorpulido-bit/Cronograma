@@ -923,7 +923,14 @@ async function loadFromSupabase(){
       // Merge cloud projects into state
       const cloudProjects={};
       rows.forEach(r=>{
-        cloudProjects[r.id]={name:r.nombre,weeks:r.semanas||24,tasks:r.tareas||[]};
+        cloudProjects[r.id]={
+          name:r.nombre,
+          weeks:r.semanas||24,
+          tasks:r.tareas||[],
+          startDate:r.fecha_inicio||'',
+          exclWeekends:r.excl_fines_semana!==null?r.excl_fines_semana:true,
+          exclHolidays:r.excl_festivos!==null?r.excl_festivos:true
+        };
       });
       // Keep current project selection if still exists in cloud
       state.projects={...cloudProjects};
@@ -957,13 +964,24 @@ async function syncAllToSupabase(){
 }
 
 async function upsertProject(id,proj){
-  await sbRequest('POST','/rest/v1/proyectos',{
-    id,nombre:proj.name,semanas:proj.weeks||24,tareas:proj.tasks
-  }).catch(()=>
-    sbRequest('PATCH',`/rest/v1/proyectos?id=eq.${id}`,{
-      nombre:proj.name,semanas:proj.weeks||24,tareas:proj.tasks
-    })
-  );
+  const payload={
+    id,
+    nombre:proj.name,
+    semanas:proj.weeks||24,
+    tareas:proj.tasks,
+    fecha_inicio:proj.startDate||null,
+    excl_fines_semana:proj.exclWeekends!==undefined?proj.exclWeekends:true,
+    excl_festivos:proj.exclHolidays!==undefined?proj.exclHolidays:true
+  };
+  await sbRequest('POST','/rest/v1/proyectos',payload)
+    .catch(()=>sbRequest('PATCH',`/rest/v1/proyectos?id=eq.${encodeURIComponent(id)}`,{
+      nombre:payload.nombre,
+      semanas:payload.semanas,
+      tareas:payload.tareas,
+      fecha_inicio:payload.fecha_inicio,
+      excl_fines_semana:payload.excl_fines_semana,
+      excl_festivos:payload.excl_festivos
+    }));
 }
 
 async function deleteFromSupabase(id){
@@ -2413,7 +2431,14 @@ function importProjectJSON(){
       const exists=Object.values(state.projects).find(p=>p.name===proj.name);
       const newId=exists?'imp_'+Date.now():(proj.id||'imp_'+Date.now());
       const finalName=exists?proj.name+' (importado)':proj.name;
-      state.projects[newId]={name:finalName,tasks:proj.tasks,weeks:proj.weeks||24};
+      state.projects[newId]={
+        name:finalName,
+        tasks:proj.tasks,
+        weeks:proj.weeks||24,
+        startDate:proj.startDate||'',
+        exclWeekends:proj.exclWeekends!==undefined?proj.exclWeekends:true,
+        exclHolidays:proj.exclHolidays!==undefined?proj.exclHolidays:true
+      };
       state.currentProject=newId;
       buildSel();
       document.getElementById('tw').value=String(proj.weeks||24);
@@ -2653,6 +2678,10 @@ function saveDateConfig(){
     proj.exclWeekends=exclW;
     proj.exclHolidays=exclH;
     markDirty();
+    // Save to Supabase immediately
+    upsertProject(state.currentProject,proj)
+      .then(()=>setSyncStatus('Guardado en nube ☁','ok'))
+      .catch(()=>setSyncStatus('Sin conexión — modo local','offline'));
   }
 }
 
