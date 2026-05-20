@@ -242,12 +242,13 @@ main{padding:16px 18px;}
 .gtable{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
 .gtable th{font-size:10px;font-weight:500;color:var(--text3);padding:6px 2px;text-align:center;border-bottom:.5px solid var(--border2);background:var(--surface);font-family:var(--mono);position:sticky;z-index:10;}
 .gtable thead tr:first-child th{top:0;}
-.gtable thead tr:last-child th{top:var(--sp-row-h,22px);}
+.gtable thead tr:last-child th{top:var(--sp-row-h,30px);}
 .gtable th.nth{text-align:left;padding-left:8px;font-family:var(--font);}
 .gtable td{padding:2px 1px;border-bottom:.5px solid var(--border2);vertical-align:middle;}
 .gtable tr:last-child td{border-bottom:none;}
 .gnc{width:240px;}.goc{width:38px;}.gwc{width:26px;}
-.sp-header{background:var(--blue-bg)!important;color:var(--blue)!important;font-weight:600!important;font-size:9px!important;letter-spacing:.04em;border-left:.5px solid var(--blue)!important;border-right:.5px solid var(--blue)!important;}
+.sp-header{background:var(--blue-bg)!important;color:var(--blue)!important;font-weight:600!important;font-size:9px!important;letter-spacing:.04em;border-left:.5px solid var(--blue)!important;border-right:.5px solid var(--blue)!important;vertical-align:middle;}
+.wk-header:hover{background:var(--surface2)!important;color:var(--text)!important;}
 .wk-header{font-size:9px;color:var(--text3);}.gdc{width:26px;font-size:10px;color:var(--text3);text-align:center;font-family:var(--mono);}.gac{width:22px;}
 .tn{font-size:11px;color:var(--text);padding:3px 3px 3px 7px;white-space:normal;word-break:break-word;display:block;outline:none;border-radius:3px;max-width:226px;line-height:1.4;}
 .tn:focus{background:var(--blue-bg);color:#185FA5;}
@@ -1172,34 +1173,36 @@ function render(){
   const gh=document.getElementById('gh');gh.innerHTML='';
   const tr=document.createElement('tr');
   const{startDate,exclW,exclH}=getDateConfig();
-  // Sprint row (every 2 weeks = 1 sprint)
+  // Sprint row — with date range in sprint band
   const trSp=document.createElement('tr');
-  let spHtml=`<th class="goc" rowspan="3" style="vertical-align:middle;"></th><th class="gnc nth" rowspan="3" style="vertical-align:middle;">Módulo</th>`;
+  let spHtml=`<th class="goc" rowspan="2" style="vertical-align:middle;"></th><th class="gnc nth" rowspan="2" style="vertical-align:middle;">Módulo</th>`;
   for(let i=0;i<TW;i+=2){
     const spNum=Math.floor(i/2)+1;
     const cols=Math.min(2,TW-i);
-    spHtml+=`<th class="gwc sp-header" colspan="${cols}">SP${spNum}</th>`;
+    let spDateLabel='';
+    if(startDate){
+      const r1=getWeekDateRange(i+1,startDate,exclW,exclH);
+      const r2=getWeekDateRange(Math.min(i+2,TW),startDate,exclW,exclH);
+      if(r1&&r2) spDateLabel=`<div style="font-size:8px;font-weight:400;opacity:.85;margin-top:1px;letter-spacing:0;">${formatDateShort(r1.start)}–${formatDateShort(r2.end)}</div>`;
+      else if(r1) spDateLabel=`<div style="font-size:8px;font-weight:400;opacity:.85;margin-top:1px;">${formatDateShort(r1.start)}–${formatDateShort(r1.end)}</div>`;
+    }
+    spHtml+=`<th class="gwc sp-header" colspan="${cols}" style="line-height:1.2;padding:4px 2px;">SP${spNum}${spDateLabel}</th>`;
   }
-  spHtml+=`<th class="gdc" rowspan="3" style="vertical-align:middle;">Dur</th><th class="gac" rowspan="3"></th>`;
+  spHtml+=`<th class="gdc" rowspan="2" style="vertical-align:middle;">Dur</th><th class="gac" rowspan="2"></th>`;
   trSp.innerHTML=spHtml;
   gh.appendChild(trSp);
-  // Week row
-  tr.innerHTML=Array.from({length:TW},(_,i)=>`<th class="gwc wk-header">S${i+1}</th>`).join('');
-  gh.appendChild(tr);
-  // Date row
-  const trDate=document.createElement('tr');
-  let dateHtml='';
+  // Week row — with tooltip showing exact date range on hover
+  let weekHtml='';
   for(let i=0;i<TW;i++){
+    let tooltip='';
     if(startDate){
       const range=getWeekDateRange(i+1,startDate,exclW,exclH);
-      const label=range?formatDateShort(range.start):'';
-      dateHtml+=`<th class="gwc" style="font-size:8px;color:var(--text3);font-family:var(--mono);padding:2px 1px;background:var(--surface);">${label}</th>`;
-    } else {
-      dateHtml+=`<th class="gwc" style="background:var(--surface);"></th>`;
+      if(range) tooltip=`title="${formatDate(range.start)} – ${formatDate(range.end)}"`;
     }
+    weekHtml+=`<th class="gwc wk-header" ${tooltip} style="cursor:default;">S${i+1}</th>`;
   }
-  trDate.innerHTML=dateHtml;
-  gh.appendChild(trDate);
+  tr.innerHTML=weekHtml;
+  gh.appendChild(tr);
   updateDateResult();
   // Set CSS var for sticky offset after render
   requestAnimationFrame(()=>{
@@ -1452,13 +1455,16 @@ function exportCSV(){
   // Sheet 2: weekly view (appended after blank line)
   rows.push([]);
   rows.push(['--- VISTA POR SEMANA ---']);
-  rows.push(['Semana','Sprint','Fase','Módulo','Tarea','Tipo','Estado']);
+  rows.push(['Semana','Sprint','Fechas','Fase','Módulo','Tarea','Tipo','Estado']);
   for(let w=1;w<=maxW;w++){
     const wt=tasks.filter(t=>w>=t.start&&w<t.start+t.dur);
     wt.forEach(t=>{
       const isStart=w===t.start,isEnd=w===t.start+t.dur-1;
       const status=isStart&&isEnd?'única':isStart?'inicio':isEnd?'fin':'continúa';
-      rows.push(['S'+w,'SP'+Math.ceil(w/2),t.phase.toUpperCase(),t.section||'',t.name,t.type==='mobile'?'Móvil':'Web',status]);
+      const{startDate:csd,exclW:cew,exclH:ceh}=getDateConfig();
+      let wDateRange='';
+      if(csd){const cr=getWeekDateRange(w,csd,cew,ceh);if(cr) wDateRange=`${formatDate(cr.start)} – ${formatDate(cr.end)}`;}
+      rows.push(['S'+w,'SP'+Math.ceil(w/2),wDateRange,t.phase.toUpperCase(),t.section||'',t.name,t.type==='mobile'?'Móvil':'Web',status]);
     });
   }
 
@@ -1687,7 +1693,10 @@ async function exportXLSX(){
         ws3.getRow(rw3).height=15;
         ws3.mergeCells(rw3,1,rw3,6);
         const sc=ws3.getCell(rw3,1);
-        sc.value=spLabel+' — Semanas '+(spNum*2-1)+' y '+spNum*2;
+        let spDateStr2=spLabel+' — Semanas '+(spNum*2-1)+' y '+spNum*2;
+        const{startDate:xsd,exclW:xew,exclH:xeh}=getDateConfig();
+        if(xsd){const xr1=getWeekDateRange(spNum*2-1,xsd,xew,xeh);const xr2=getWeekDateRange(spNum*2,xsd,xew,xeh);if(xr1&&xr2) spDateStr2+=` (${formatDate(xr1.start)} – ${formatDate(xr2.end)})`;}
+        sc.value=spDateStr2;
         sc.font={name:'Calibri',bold:true,size:9,color:{argb:'FF185FA5'}};
         sc.fill=bgFill('E6F1FB');sc.alignment=cAlign('left');
         rw3++;
@@ -1697,7 +1706,13 @@ async function exportXLSX(){
       ws3.getRow(rw3).height=15;
       ws3.mergeCells(rw3,1,rw3,6);
       const wc=ws3.getCell(rw3,1);
-      wc.value='  Semana '+w+' — '+wt.length+' tarea'+(wt.length!==1?'s':'');
+      let wkLabel='  Semana '+w+' — '+wt.length+' tarea'+(wt.length!==1?'s':'');
+      const{startDate:sd2,exclW:ew2,exclH:eh2}=getDateConfig();
+      if(sd2){
+        const wr=getWeekDateRange(w,sd2,ew2,eh2);
+        if(wr) wkLabel+=` · ${formatDate(wr.start)} – ${formatDate(wr.end)}`;
+      }
+      wc.value=wkLabel;
       wc.font={name:'Calibri',bold:true,italic:true,size:9,color:{argb:'FF4A4A48'}};
       wc.fill=bgFill('FAFAF8');wc.alignment=cAlign('left');
       rw3++;
@@ -1760,6 +1775,13 @@ async function exportPPTX(){
     const ms=tasks.filter(t=>t.milestone).length;
     const modCount=new Set(real.map(t=>t.phase+':'+t.section)).size;
     const sprintCount=Math.ceil(maxW/2);
+    const{startDate:ppsd,exclW:ppew,exclH:ppeh}=getDateConfig();
+    let fechaInicioStr='—',fechaFinStr='—';
+    if(ppsd){
+      fechaInicioStr=formatDate(ppsd);
+      const ppEnd=addWorkdays(ppsd,maxW,ppew,ppeh);
+      fechaFinStr=formatDate(ppEnd);
+    }
     const stats=[[''+new Set(tasks.filter(t=>!t.milestone).map(t=>t.phase)).size,'Fases'],['2','Apps (Móvil+Web)'],[''+modCount,'Módulos'],[''+real.length,'Tareas'],[''+sprintCount,'Sprints'],[''+maxW,'Semanas']];
     stats.forEach(([n,l],i)=>{
       const cols=stats.length;
@@ -1768,6 +1790,9 @@ async function exportPPTX(){
       s1.addText(n,{x,y:3.8,w:colW-0.1,h:0.85,fontSize:30,bold:true,color:'378ADD',fontFace:'Calibri',align:'left'});
       s1.addText(l,{x,y:4.62,w:colW-0.1,h:0.4,fontSize:10,color:'8BB8E8',fontFace:'Calibri',align:'left'});
     });
+    if(ppsd){
+      s1.addText(`Inicio: ${fechaInicioStr}  ·  Fin estimado: ${fechaFinStr}`,{x:0.4,y:6.5,w:10,h:0.3,fontSize:10,color:'8BB8E8',fontFace:'Calibri',italic:true});
+    }
     s1.addText('TAT — Trade Account Tool',{x:0.4,y:6.85,w:6,h:0.35,fontSize:9,color:gray,fontFace:'Calibri',italic:true});
 
     // ── SLIDE 2-3: one overview + gantt per phase
@@ -1928,7 +1953,14 @@ async function exportPPTX(){
 
       // Header bar
       sw.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:W,h:0.75,fill:{color:'E6F1FB'},line:{color:'B3D4F5'}});
-      sw.addText(`SP${sp} — Semanas ${w1} y ${w2}`,{x:0.3,y:0,w:7,h:0.75,fontSize:18,bold:true,color:'185FA5',fontFace:'Calibri',valign:'middle'});
+      let pptxSpLabel=`SP${sp} — Semanas ${w1} y ${w2}`;
+      const{startDate:psd,exclW:pew,exclH:peh}=getDateConfig();
+      if(psd){
+        const pr1=getWeekDateRange(w1,psd,pew,peh);
+        const pr2=getWeekDateRange(w2,psd,pew,peh);
+        if(pr1&&pr2) pptxSpLabel+=` · ${formatDate(pr1.start)} – ${formatDate(pr2.end)}`;
+      }
+      sw.addText(pptxSpLabel,{x:0.3,y:0,w:10,h:0.75,fontSize:16,bold:true,color:'185FA5',fontFace:'Calibri',valign:'middle'});
       const spTotal=[...new Set([...spTasks1,...spTasks2].map(t=>t.id))].length;
       sw.addText(`${spTotal} tarea${spTotal!==1?'s':''} activas`,{x:10,y:0,w:3.1,h:0.75,fontSize:11,color:'378ADD',fontFace:'Calibri',valign:'middle',align:'right'});
 
